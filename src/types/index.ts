@@ -19,21 +19,44 @@ export type MorphologyAya = {
   roots: string[];
 };
 
-export interface WordMap {
+export type WordMap = {
   [key: string]: {
     lemma?: string;
     root?: string;
   };
-}
+};
 
 export type MatchType = 'exact' | 'lemma' | 'root' | 'fuzzy' | 'none';
 
-export interface ScoredQuranText extends QuranText {
+export type ScoredQuranText = QuranText & {
   matchScore: number;
   matchType: MatchType;
-}
+};
 
-export interface AdvancedSearchOptions {
+export type AdvancedSearchOptions = {
   lemma: boolean;
   root: boolean;
-}
+};
+
+export type SearchCounts = {
+  simple: number;
+  lemma: number;
+  root: number;
+  total: number;
+};
+
+export type PaginationOptions = {
+  page?: number;
+  limit?: number;
+};
+
+export type SearchResponse = {
+  results: ScoredQuranText[];
+  counts: SearchCounts;
+  pagination: {
+    totalResults: number;
+    totalPages: number;
+    currentPage: number;
+    limit: number;
+  };
+};

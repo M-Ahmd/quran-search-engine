@@ -18,119 +18,177 @@ The engine is stateless. You provide the data (Quran text) and the query, and it
 
 ### 1. Data Loading
 
-Before searching, you likely need the morphology data.
+Large datasets like Quranic text, morphology, and word maps are lazy-loaded to keep your initial bundle size small.
 
 ```typescript
-import { loadMorphology, type WordMap, type MorphologyAya } from 'quran-search-engine';
+import {
+  loadQuranData,
+  loadMorphology,
+  loadWordMap,
+  type WordMap,
+  type MorphologyAya,
+  type QuranText,
+} from 'quran-search-engine';
 
-// Optional: Load default data provided with the package
-// Note: This is an async operation if we use dynamic imports to save bundle size
-const morphologyData = await loadMorphology(); 
+/**
+ * loads datasets asynchronously.
+ * Returns:
+ * - quranData: QuranText[] -> The complete dataset of Quranic verses.
+ * - morphologyMap: Map<gid, MorphologyAya> -> Fast lookup for roots/lemmas by verse ID.
+ * - wordMap: WordMap -> Dictionary mapping words to their canonical root/lemma.
+ */
+const [quranData, morphologyMap, wordMap] = await Promise.all([
+  loadQuranData(),
+  loadMorphology(),
+  loadWordMap(),
+]);
 ```
 
 ### 2. Normalization
 
-Utilities to clean and normalize Arabic text (unifying Alefs, removing diacritics).
+The library provides a high-performance Arabic normalization utility. It is essential for ensuring that queries (often typed without diacritics) match the indexed text.
 
 ```typescript
-import { normalizeArabic } from 'quran-search-engine';
+import { normalizeArabic, removeTashkeel } from 'quran-search-engine';
 
-const clean = normalizeArabic("بِسْمِ ٱللَّهِ"); // "بسم الله"
+// removeTashkeel: Only removes diacritics and Quranic marks
+const simple = removeTashkeel('بِسْمِ'); // "بسم"
+
+// normalizeArabic: Full normalization (Alef unification, Hamza cleanup, etc.)
+const heavy = normalizeArabic('بِسْمِ ٱللَّهِ'); // "بسم الله"
 ```
 
 ### 3. Search Functions
 
 #### `simpleSearch`
-Fast, filter-based search.
+
+A fast, straightforward search for filtering arrays based on a specific field.
 
 ```typescript
-import { simpleSearch, type QuranText } from 'quran-search-engine';
+import { simpleSearch } from 'quran-search-engine';
 
-const results = simpleSearch(
-  quranData, // Your array of QuranText
-  "Al-Mulk", // Query
-  "surah_name_en" // Field to key off
-);
+// simpleSearch<T extends Record<string, unknown>>(items: T[], query: string, field: keyof T)
+const results = simpleSearch(quranData, 'الله', 'standard');
 ```
 
-#### `advancedSearch` 
-The main engine power. Combines exact match, fuzzy search (Fuse.js), and linguistic match (root/lemma).
+#### `advancedSearch`
+
+The core engine. It uses `fuse.js` for fuzzy matching and the morphology data for linguistic matching.
+The primary search function. It combines text matching, linguistic analysis (lemma/root), and fuzzy fallback.
 
 ```typescript
-import { advancedSearch, type AdvancedSearchOptions } from 'quran-search-engine';
+import { advancedSearch, loadQuranData, loadMorphology, loadWordMap } from 'quran-search-engine';
 
-const options: AdvancedSearchOptions = {
-    useMorphology: true,
-    lemma: true,
-    root: true,
-    // fuseOptions: { ... } // Custom Fuse.js config
-};
-
-const results = advancedSearch(
-    "books",           // Query
-    quranData,         // Data source
-    morphologyData,    // From loadMorphology()
-    wordMap,           // From loadWordMap()
-    options
+const response = advancedSearch(
+  'كتب',
+  quranData,
+  morphologyMap,
+  wordMap,
+  { lemma: true, root: true },
+  { page: 1, limit: 10 }, // Optional pagination
 );
 
-// Returns ScoredQuranText[]
-/*
-[
-  {
-    ...QuranText,
-    matchScore: 10,
-    matchType: 'exact' | 'lemma' | 'root'
-  }
-]
-*/
+console.log(response.results); // ScoredQuranText[] (10 items)
+console.log(response.counts); // Global counts for all matches
+console.log(response.pagination); // { totalResults, totalPages, currentPage, limit }
 ```
 
-## Types
+**Scoring System:**
+
+- **Exact Match**: 3 points per token.
+- **Lemma Match**: 2 points per token.
+- **Root Match**: 1 point per token.
+
+#### `getPositiveTokens`
+
+Identify exactly which words in a verse caused the match. Perfect for UI highlighting.
 
 ```typescript
-export interface QuranText {
+import { getPositiveTokens } from 'quran-search-engine';
+
+const tokens = getPositiveTokens(
+  verse,
+  'lemma',
+  'كتب', // The search query
+  morphologyMap,
+  wordMap['كتب'],
+);
+// Returns: ['فاكتبوه', 'وليكتب', ...]
+```
+
+---
+
+### Core Types
+
+#### `QuranText`
+
+The standard structure for Quranic verses.
+
+```typescript
+type QuranText = {
   gid: number;
-  surah: number;
-  aya: number;
-  text: string;
-  // ... other fields
-}
-
-export interface SearchResult extends QuranText {
-  score: number;
-  matchType: 'exact' | 'lemma' | 'root' | 'fuzzy';
-  highlightedTokenIndices?: number[]; // Indices of matching words
-}
+  uthmani: string;
+  simple: string;
+  standard: string;
+  // ... other surah/aya metadata
+};
 ```
 
-## Framework Examples
+#### `ScoredQuranText`
 
-### React
+Extends `QuranText` with search metadata.
+
+```typescript
+type ScoredQuranText = QuranText & {
+  matchScore: number;
+  matchType: 'exact' | 'lemma' | 'root' | 'fuzzy' | 'none';
+};
+```
+
+#### `SearchResponse`
+
+The structure returned by `advancedSearch`.
+
+```typescript
+type SearchResponse = {
+  results: ScoredQuranText[];
+  counts: {
+    simple: number;
+    lemma: number;
+    root: number;
+    total: number;
+  };
+  pagination: {
+    totalResults: number;
+    totalPages: number;
+    currentPage: number;
+    limit: number;
+  };
+};
+```
+
+---
+
+## Framework Integration
+
+### React Example
 
 ```tsx
-import { advancedSearch } from 'quran-search-engine';
+import { useEffect, useState } from 'react';
+import { advancedSearch, loadMorphology, loadWordMap } from 'quran-search-engine';
 
-const SearchComponent = ({ query }) => {
-  const results = useMemo(() => {
-    return advancedSearch(query, data, morph, wordMap, { root: true });
-  }, [query]);
+export function SearchPage() {
+  const [data, setData] = useState({ morph: null, words: null });
 
-  return <div>{results.map(r => <ResultRow key={r.gid} item={r} />)}</div>
+  useEffect(() => {
+    // Load once on mount
+    Promise.all([loadMorphology(), loadWordMap()]).then(([morph, words]) => {
+      setData({ morph, words });
+    });
+  }, []);
+
+  const results = advancedSearch('query', quranJson, data.morph, data.words, { root: true });
+
+  // ... render results
 }
-```
-
-### Node.js API
-
-```typescript
-import { advancedSearch } from 'quran-search-engine';
-import fs from 'fs';
-
-// Load data from disk (or DB)
-const quranJson = JSON.parse(fs.readFileSync('./quran.json'));
-
-app.get('/search', (req, res) => {
-   const matches = advancedSearch(req.query.q, quranJson, ...);
-   res.json(matches);
-});
 ```

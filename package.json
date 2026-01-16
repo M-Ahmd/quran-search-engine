@@ -1,6 +1,6 @@
 {
   "name": "quran-search-engine",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Framework-agnostic advanced Quranic search engine",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
@@ -20,7 +20,7 @@
     "islam",
     "morphology"
   ],
-  "author": "Adel Benyahia",
+  "author": "Adel Benyahia <contact@adelpro.us.kg>",
   "license": "MIT",
   "lint-staged": {
     "src/**/*.{ts,tsx}": [
