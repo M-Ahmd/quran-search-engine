@@ -1,4 +1,4 @@
-import Fuse, { type IFuseOptions } from 'fuse.js';
+import Fuse, { type IFuseOptions, type FuseResultMatch } from 'fuse.js';
 import { normalizeArabic } from '../utils/normalization';
 import { getPositiveTokens } from './tokenization';
 import type {
@@ -13,6 +13,10 @@ import type {
   PaginationOptions,
 } from '../types';
 
+type QuranWithFuseMatches = QuranText & {
+  fuseMatches?: readonly FuseResultMatch[];
+};
+
 // ==================== Fuse.js Setup ====================
 export const createArabicFuseSearch = <T>(
   collection: T[],
@@ -21,10 +25,11 @@ export const createArabicFuseSearch = <T>(
 ): Fuse<T> =>
   new Fuse(collection, {
     includeScore: true,
-    threshold: 0.3,
-    distance: 50,
+    includeMatches: true,
+    threshold: 0.5,
+    distance: 100,
     ignoreLocation: true,
-    minMatchCharLength: 2,
+    minMatchCharLength: 3,
     useExtendedSearch: true,
     keys,
     ...options,
@@ -41,9 +46,12 @@ export const simpleSearch = <T extends Record<string, unknown>>(
   const cleanQuery = normalizeArabic(query.replace(/[^\u0600-\u06FF\s]+/g, '').trim());
   if (!cleanQuery) return [];
 
+  const queryTokens = cleanQuery.split(/\s+/);
+
   return items.filter((item) => {
-    const fieldValue = String(item[searchField] || '');
-    return normalizeArabic(fieldValue).includes(cleanQuery);
+    const fieldValue = normalizeArabic(String(item[searchField] || ''));
+    // AND logic: All tokens must be present
+    return queryTokens.every((token) => fieldValue.includes(token));
   });
 };
 
@@ -57,67 +65,106 @@ export const computeScore = (
   verse: QuranText,
   cleanQuery: string,
   morphologyMap: Map<number, MorphologyAya>,
+  wordMap: WordMap,
   options: AdvancedSearchOptions,
-  mapEntry?: { lemma?: string; root?: string },
+  mapEntry?: { lemma?: string; root?: string }, // Deprecated/Legacy
+  fuseMatches?: readonly FuseResultMatch[],
 ): ScoredQuranText => {
   let score = 0;
   let matchType: MatchType = 'none';
   let matchedTokens: string[] = [];
   const tokenTypes: Record<string, MatchType> = {};
 
-  // 1. Text (Exact) Matches - Weight: 3
-  const textMatches = getPositiveTokens(
-    verse,
-    'text',
-    undefined,
-    undefined,
-    cleanQuery,
-    morphologyMap,
-  );
-  if (textMatches.length > 0) {
-    score += textMatches.length * 3;
-    matchType = 'exact';
-    matchedTokens = [...matchedTokens, ...textMatches];
-    textMatches.forEach((t) => (tokenTypes[t] = 'exact'));
-  }
+  const queryTokens = cleanQuery.split(/\s+/);
 
-  // 2. Lemma Matches - Weight: 2
-  if (options.lemma && mapEntry?.lemma) {
-    const lemmaMatches = getPositiveTokens(
+  // Check each token
+  for (const token of queryTokens) {
+    // 1. Text (Exact) Matches - Weight: 3
+    const textMatches = getPositiveTokens(
       verse,
-      'lemma',
-      mapEntry.lemma,
+      'text',
       undefined,
-      cleanQuery,
+      undefined,
+      token,
       morphologyMap,
     );
-    if (lemmaMatches.length > 0) {
-      score += lemmaMatches.length * 2;
-      if (matchType !== 'exact') matchType = 'lemma';
-      matchedTokens = [...matchedTokens, ...lemmaMatches];
-      lemmaMatches.forEach((t) => {
-        if (!tokenTypes[t]) tokenTypes[t] = 'lemma';
-      });
+    if (textMatches.length > 0) {
+      score += textMatches.length * 3;
+      if (matchType === 'none') matchType = 'exact'; // Upgrade only if none
+      matchedTokens.push(...textMatches);
+      textMatches.forEach((t) => (tokenTypes[t] = 'exact'));
+    }
+
+    // 2. Lemma/Root Matches
+    const entry = wordMap[token];
+    if (entry) {
+      if (options.lemma && entry.lemma) {
+        const lemmaMatches = getPositiveTokens(
+          verse,
+          'lemma',
+          entry.lemma,
+          undefined,
+          token,
+          morphologyMap,
+        );
+        if (lemmaMatches.length > 0) {
+          score += lemmaMatches.length * 2;
+          if (matchType !== 'exact') matchType = 'lemma';
+          matchedTokens.push(...lemmaMatches);
+          lemmaMatches.forEach((t) => {
+            if (!tokenTypes[t]) tokenTypes[t] = 'lemma';
+          });
+        }
+      }
+
+      if (options.root && entry.root) {
+        const rootMatches = getPositiveTokens(
+          verse,
+          'root',
+          undefined,
+          entry.root,
+          token,
+          morphologyMap,
+          wordMap,
+        );
+        if (rootMatches.length > 0) {
+          score += rootMatches.length * 1;
+          if (matchType !== 'exact' && matchType !== 'lemma') matchType = 'root';
+          matchedTokens.push(...rootMatches);
+          rootMatches.forEach((t) => {
+            if (!tokenTypes[t]) tokenTypes[t] = 'root';
+          });
+        }
+      }
     }
   }
 
-  // 3. Root Matches - Weight: 1
-  if (options.root && mapEntry?.root) {
-    const rootMatches = getPositiveTokens(
-      verse,
-      'root',
-      undefined,
-      mapEntry.root,
-      cleanQuery,
-      morphologyMap,
-    );
-    if (rootMatches.length > 0) {
-      score += rootMatches.length;
-      if (matchType !== 'exact' && matchType !== 'lemma') matchType = 'root';
-      matchedTokens = [...matchedTokens, ...rootMatches];
-      rootMatches.forEach((t) => {
-        if (!tokenTypes[t]) tokenTypes[t] = 'root';
-      });
+  // 4. Fuzzy Matches (Fallback) - Weight: 0.5 (or just purely for highlighting)
+  if (matchType === 'none' && fuseMatches && fuseMatches.length > 0) {
+    matchType = 'fuzzy';
+    // Extract tokens from Fuse matches
+    const fuzzyTokens: string[] = [];
+    fuseMatches.forEach((match) => {
+      const { key, indices } = match;
+      if (!key || !indices) return;
+
+      const sourceText = verse[key as keyof QuranText];
+      if (typeof sourceText === 'string') {
+        indices.forEach(([start, end]) => {
+          // Fuse indices are inclusive [start, end]
+          const token = sourceText.substring(start, end + 1);
+          if (token) {
+            fuzzyTokens.push(token);
+            tokenTypes[token] = 'fuzzy';
+          }
+        });
+      }
+    });
+
+    if (fuzzyTokens.length > 0) {
+      matchedTokens = [...matchedTokens, ...fuzzyTokens];
+      // Add some score for fuzzy matches
+      score += fuzzyTokens.length * 0.5;
     }
   }
 
@@ -134,44 +181,112 @@ export const performAdvancedLinguisticSearch = (
   fuseInstance: Fuse<QuranText>,
   wordMap: WordMap,
   morphologyMap: Map<number, MorphologyAya>,
-): QuranText[] => {
+): (QuranText & { fuseMatches?: readonly FuseResultMatch[] })[] => {
   const cleanQuery = normalizeArabic(query.replace(/[^\u0600-\u06FF\s]+/g, '').trim());
   if (!cleanQuery) return [];
 
-  const entry = wordMap[cleanQuery];
+  const tokens = cleanQuery.split(/\s+/);
 
-  // If no dictionary entry, fallback to fuzzy search
-  if (!entry) return fuseInstance.search(cleanQuery).map((res) => res.item);
+  // 1. Identify which verses match EACH token
+  const tokenMatches = tokens.map((token) => {
+    const entry = wordMap[token];
+    const matchingGids = new Set<number>();
 
-  const { lemma: targetLemma, root: targetRoot } = entry;
-  const matchingGids = new Set<number>();
+    // Linguistic search if dictionary entry exists
+    if (entry) {
+      const { lemma: targetLemma, root: targetRoot } = entry;
 
-  if (options.lemma && targetLemma) {
-    for (const verse of quranData) {
-      const morph = morphologyMap.get(verse.gid);
-      if (morph?.lemmas.some((l) => normalizeArabic(l).includes(normalizeArabic(targetLemma)))) {
-        matchingGids.add(verse.gid);
+      if (options.lemma && targetLemma) {
+        for (const verse of quranData) {
+          const morph = morphologyMap.get(verse.gid);
+          if (
+            morph?.lemmas.some((lemma) =>
+              normalizeArabic(lemma).includes(normalizeArabic(targetLemma)),
+            )
+          ) {
+            matchingGids.add(verse.gid);
+          }
+        }
+      }
+
+      if (options.root && targetRoot) {
+        for (const verse of quranData) {
+          const morph = morphologyMap.get(verse.gid);
+          if (
+            morph?.roots.some((root) => normalizeArabic(root).includes(normalizeArabic(targetRoot)))
+          ) {
+            matchingGids.add(verse.gid);
+          }
+        }
+      }
+
+      if (matchingGids.size > 0) {
+        return { type: 'linguistic', gids: matchingGids };
       }
     }
+
+    // Fallback to Fuzzy/Fuse for this token if no linguistic match
+    const fuseResults = fuseInstance.search(token);
+
+    // Adaptive threshold for this token
+    const hasHighQualityMatches = fuseResults.some(
+      (res) => res.score !== undefined && res.score <= 0.25,
+    );
+    const cutoff = hasHighQualityMatches ? 0.35 : 0.5;
+
+    const fuzzyGids = new Set<number>();
+    const fuseMatchesMap = new Map<number, readonly FuseResultMatch[]>();
+
+    fuseResults
+      .filter((res) => res.score !== undefined && res.score <= cutoff)
+      .forEach((res) => {
+        fuzzyGids.add(res.item.gid);
+        if (res.matches) fuseMatchesMap.set(res.item.gid, res.matches);
+      });
+
+    return { type: 'fuzzy', gids: fuzzyGids, fuseMatches: fuseMatchesMap };
+  });
+
+  // 2. Intersect results (AND logic)
+  if (tokenMatches.length === 0) return [];
+
+  // Start with the first set
+  let intersection = new Set(tokenMatches[0].gids);
+
+  for (let i = 1; i < tokenMatches.length; i++) {
+    const currentGids = tokenMatches[i].gids;
+    if (currentGids.size === 0) return []; // Short-circuit
+    intersection = new Set([...intersection].filter((gid) => currentGids.has(gid)));
+    if (intersection.size === 0) return [];
   }
 
-  if (options.root && targetRoot) {
-    for (const verse of quranData) {
-      const morph = morphologyMap.get(verse.gid);
-      if (morph?.roots.some((r) => normalizeArabic(r).includes(normalizeArabic(targetRoot)))) {
-        matchingGids.add(verse.gid);
-      }
-    }
-  }
+  if (intersection.size === 0) return [];
 
-  if (matchingGids.size > 0) {
-    const gidToVerse = new Map(quranData.map((v) => [v.gid, v]));
-    return Array.from(matchingGids)
-      .map((gid) => gidToVerse.get(gid))
-      .filter((v): v is QuranText => !!v);
-  }
+  // 3. Map back to QuranText objects
+  const gidToVerse = new Map(quranData.map((verse) => [verse.gid, verse]));
 
-  return fuseInstance.search(cleanQuery).map((res) => res.item);
+  const results: QuranWithFuseMatches[] = Array.from(intersection)
+    .map((gid): QuranWithFuseMatches | null => {
+      const verse = gidToVerse.get(gid);
+      if (!verse) return null;
+
+      const allFuseMatches: FuseResultMatch[] = [];
+
+      tokenMatches.forEach((tokenMatch) => {
+        if (tokenMatch.type === 'fuzzy' && tokenMatch.fuseMatches) {
+          const matches = tokenMatch.fuseMatches.get(gid);
+          if (matches) allFuseMatches.push(...matches);
+        }
+      });
+
+      return {
+        ...verse,
+        fuseMatches: allFuseMatches.length > 0 ? [...allFuseMatches] : undefined,
+      };
+    })
+    .filter((verse): verse is QuranWithFuseMatches => verse !== null);
+
+  return results;
 };
 
 // ==================== Combined Search API ====================
@@ -230,7 +345,12 @@ export const advancedSearch = (
   for (const verse of allMatches) {
     if (!gidSet.has(verse.gid)) {
       gidSet.add(verse.gid);
-      combined.push(computeScore(verse, cleanQuery, morphologyMap, options, mapEntry));
+      // Pass fuseMatches if available
+      const fuseMatches =
+        'fuseMatches' in verse ? (verse as QuranWithFuseMatches).fuseMatches : undefined;
+      combined.push(
+        computeScore(verse, cleanQuery, morphologyMap, wordMap, options, mapEntry, fuseMatches),
+      );
     }
   }
 
