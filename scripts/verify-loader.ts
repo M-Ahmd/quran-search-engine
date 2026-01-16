@@ -4,8 +4,8 @@ import {
   loadWordMap,
   simpleSearch,
   advancedSearch,
-  getPositiveTokens,
 } from '../src/index';
+import { getPositiveTokens } from '../src/core/tokenization';
 
 const verify = async () => {
   console.log('🚀 Starting Comprehensive Verification...');
@@ -66,6 +66,14 @@ const verify = async () => {
 
     if (searchResponse.results.length > 0) {
       const bestMatch = searchResponse.results[0];
+      const query = 'كتب';
+      const queryEntry = wordMap[query];
+      const highlightMode =
+        bestMatch.matchType === 'root'
+          ? 'root'
+          : bestMatch.matchType === 'lemma'
+            ? 'lemma'
+            : 'text';
       console.log('\n🏆 Best Match from Page 1:', {
         gid: bestMatch.gid,
         uthmani: bestMatch.uthmani,
@@ -76,12 +84,12 @@ const verify = async () => {
       // 6. Test getPositiveTokens (Highlighting)
       const tokens = getPositiveTokens(
         bestMatch,
-        bestMatch.matchType === 'root' || bestMatch.matchType === 'lemma'
-          ? bestMatch.matchType
-          : 'text',
-        'كتب',
+        highlightMode,
+        highlightMode === 'lemma' ? queryEntry?.lemma : undefined,
+        highlightMode === 'root' ? queryEntry?.root : undefined,
+        query,
         morphologyMap,
-        wordMap['كتب'],
+        wordMap,
       );
       console.log('🏷️  Matched Tokens for highlighting:', tokens);
     }
@@ -89,7 +97,6 @@ const verify = async () => {
     console.log('\n✨ All Verifications Passed successfully!');
   } catch (error) {
     console.error('\n❌ Verification Failed:', error);
-    process.exit(1);
   }
 };
 

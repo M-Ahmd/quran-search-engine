@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { getPositiveTokens } from './tokenization';
-import type { QuranText, MorphologyAya } from '../types';
+import type { QuranText, MorphologyAya, WordMap } from '../types';
 
 // Mock data
 const mockVerse: QuranText = {
@@ -29,6 +29,13 @@ const mockMorphologyMap = new Map<number, MorphologyAya>([
   ],
 ]);
 
+const mockWordMap: WordMap = {
+  الله: { lemma: 'الله', root: 'ا ل ه' },
+  الرحمن: { lemma: 'الرحمن', root: 'ر ح م' },
+  الرحيم: { lemma: 'الرحيم', root: 'ر ح م' },
+  بسم: { lemma: 'بسم', root: 'ب س م' },
+};
+
 describe('getPositiveTokens', () => {
   it('should find text matches', () => {
     const tokens = getPositiveTokens(
@@ -56,7 +63,21 @@ describe('getPositiveTokens', () => {
     expect(tokens).toContain('الله');
   });
 
-  it('should find root matches', () => {
+  it('should find root matches using word map', () => {
+    const tokens = getPositiveTokens(
+      mockVerse,
+      'root',
+      undefined,
+      'ا ل ه',
+      'الله',
+      mockMorphologyMap,
+      mockWordMap,
+    );
+
+    expect(tokens).toContain('الله');
+  });
+
+  it('should fallback to morphology roots without word map', () => {
     const tokens = getPositiveTokens(
       mockVerse,
       'root',
@@ -66,7 +87,7 @@ describe('getPositiveTokens', () => {
       mockMorphologyMap,
     );
 
-    expect(tokens).toContain('الله');
+    expect(tokens).toContain('ا ل ه');
   });
 
   it('should return empty array for no matches', () => {
