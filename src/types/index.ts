@@ -13,6 +13,12 @@ export type QuranText = {
   sura_name_romanization: string;
 };
 
+export type VerseInput = {
+  gid: number;
+  uthmani: string;
+  standard: string;
+};
+
 export type MorphologyAya = {
   gid: number;
   lemmas: string[];
@@ -28,16 +34,19 @@ export type WordMap = {
 
 export type MatchType = 'exact' | 'lemma' | 'root' | 'fuzzy' | 'none';
 
-export type ScoredQuranText = QuranText & {
+export type ScoredVerse<TVerse extends VerseInput = QuranText> = TVerse & {
   matchScore: number;
   matchType: MatchType;
   matchedTokens: string[];
   tokenTypes?: Record<string, MatchType>;
 };
 
+export type ScoredQuranText = ScoredVerse<QuranText>;
+
 export type AdvancedSearchOptions = {
   lemma: boolean;
   root: boolean;
+  fuzzy?: boolean;
 };
 
 export type SearchOptions = AdvancedSearchOptions;
@@ -55,8 +64,8 @@ export type PaginationOptions = {
   limit?: number;
 };
 
-export type SearchResponse = {
-  results: ScoredQuranText[];
+export type SearchResponse<TVerse extends VerseInput = QuranText> = {
+  results: ScoredVerse<TVerse>[];
   counts: SearchCounts;
   pagination: {
     totalResults: number;

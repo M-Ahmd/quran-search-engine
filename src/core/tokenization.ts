@@ -1,8 +1,8 @@
 import { normalizeArabic } from '../utils/normalization';
-import type { QuranText, MorphologyAya, WordMap } from '../types';
+import type { VerseInput, MorphologyAya, WordMap } from '../types';
 
 export const getPositiveTokens = (
-  verse: QuranText,
+  verse: VerseInput,
   mode: 'text' | 'lemma' | 'root',
   targetLemma: string | undefined,
   targetRoot: string | undefined,

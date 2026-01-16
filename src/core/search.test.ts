@@ -177,6 +177,18 @@ describe('search', () => {
     // but the counts.fuzzy aggregates 'none' | 'fuzzy'
     expect(result.counts.fuzzy).toBeGreaterThan(0);
   });
+
+  it('should disable fuzzy fallback when fuzzy is false', () => {
+    const result = search('الحند', mockQuranData, mockMorphologyMap, mockWordMap, {
+      lemma: true,
+      root: true,
+      fuzzy: false,
+    });
+
+    expect(result.results).toHaveLength(0);
+    expect(result.counts.total).toBe(0);
+    expect(result.counts.fuzzy).toBe(0);
+  });
 });
 
 describe('createArabicFuseSearch', () => {

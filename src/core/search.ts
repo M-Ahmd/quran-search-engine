@@ -2,18 +2,18 @@ import Fuse, { type IFuseOptions, type FuseResultMatch } from 'fuse.js';
 import { normalizeArabic } from '../utils/normalization';
 import { getPositiveTokens } from './tokenization';
 import type {
-  QuranText,
   WordMap,
   MorphologyAya,
   AdvancedSearchOptions,
-  ScoredQuranText,
   MatchType,
   SearchResponse,
   SearchCounts,
   PaginationOptions,
+  VerseInput,
+  ScoredVerse,
 } from '../types';
 
-type QuranWithFuseMatches = QuranText & {
+type VerseWithFuseMatches<TVerse extends VerseInput> = TVerse & {
   fuseMatches?: readonly FuseResultMatch[];
 };
 
@@ -61,15 +61,15 @@ export const simpleSearch = <T extends Record<string, unknown>>(
  * Computes a weighted relevance score for a verse based on match types.
  * Exact Match = 3pts, Lemma Match = 2pts, Root Match = 1pt.
  */
-export const computeScore = (
-  verse: QuranText,
+export const computeScore = <TVerse extends VerseInput>(
+  verse: TVerse,
   cleanQuery: string,
   morphologyMap: Map<number, MorphologyAya>,
   wordMap: WordMap,
   options: AdvancedSearchOptions,
   mapEntry?: { lemma?: string; root?: string }, // Deprecated/Legacy
   fuseMatches?: readonly FuseResultMatch[],
-): ScoredQuranText => {
+): ScoredVerse<TVerse> => {
   let score = 0;
   let matchType: MatchType = 'none';
   let matchedTokens: string[] = [];
@@ -148,7 +148,7 @@ export const computeScore = (
       const { key, indices } = match;
       if (!key || !indices) return;
 
-      const sourceText = verse[key as keyof QuranText];
+      const sourceText = (verse as Record<string, unknown>)[key];
       if (typeof sourceText === 'string') {
         indices.forEach(([start, end]) => {
           // Fuse indices are inclusive [start, end]
@@ -174,14 +174,14 @@ export const computeScore = (
   return { ...verse, matchScore: score, matchType, matchedTokens, tokenTypes };
 };
 
-export const performAdvancedLinguisticSearch = (
+export const performAdvancedLinguisticSearch = <TVerse extends VerseInput>(
   query: string,
-  quranData: QuranText[],
+  quranData: TVerse[],
   options: AdvancedSearchOptions,
-  fuseInstance: Fuse<QuranText>,
+  fuseInstance: Fuse<TVerse> | null,
   wordMap: WordMap,
   morphologyMap: Map<number, MorphologyAya>,
-): (QuranText & { fuseMatches?: readonly FuseResultMatch[] })[] => {
+): VerseWithFuseMatches<TVerse>[] => {
   const cleanQuery = normalizeArabic(query.replace(/[^\u0600-\u06FF\s]+/g, '').trim());
   if (!cleanQuery) return [];
 
@@ -226,6 +226,10 @@ export const performAdvancedLinguisticSearch = (
     }
 
     // Fallback to Fuzzy/Fuse for this token if no linguistic match
+    if (options.fuzzy === false || !fuseInstance) {
+      return { type: 'fuzzy', gids: new Set<number>() };
+    }
+
     const fuseResults = fuseInstance.search(token);
 
     // Adaptive threshold for this token
@@ -265,8 +269,8 @@ export const performAdvancedLinguisticSearch = (
   // 3. Map back to QuranText objects
   const gidToVerse = new Map(quranData.map((verse) => [verse.gid, verse]));
 
-  const results: QuranWithFuseMatches[] = Array.from(intersection)
-    .map((gid): QuranWithFuseMatches | null => {
+  const results: VerseWithFuseMatches<TVerse>[] = Array.from(intersection)
+    .map((gid): VerseWithFuseMatches<TVerse> | null => {
       const verse = gidToVerse.get(gid);
       if (!verse) return null;
 
@@ -284,7 +288,7 @@ export const performAdvancedLinguisticSearch = (
         fuseMatches: allFuseMatches.length > 0 ? [...allFuseMatches] : undefined,
       };
     })
-    .filter((verse): verse is QuranWithFuseMatches => verse !== null);
+    .filter((verse): verse is VerseWithFuseMatches<TVerse> => verse !== null);
 
   return results;
 };
@@ -296,14 +300,14 @@ export const performAdvancedLinguisticSearch = (
  * Combines simple text search with linguistic (lemma/root) analysis and fuzzy fallback.
  * Results are scored, deduplicated, and sorted by relevance.
  */
-export const search = (
+export const search = <TVerse extends VerseInput>(
   query: string,
-  quranData: QuranText[],
+  quranData: TVerse[],
   morphologyMap: Map<number, MorphologyAya>,
   wordMap: WordMap,
   options: AdvancedSearchOptions = { lemma: true, root: true },
   pagination: PaginationOptions = { page: 1, limit: 20 },
-): SearchResponse => {
+): SearchResponse<TVerse> => {
   // 1. Prepare query
   const arabicOnly = query.replace(/[^\u0621-\u064A\s]/g, '').trim();
   const cleanQuery = normalizeArabic(arabicOnly);
@@ -321,8 +325,10 @@ export const search = (
     };
   }
 
-  // 2. Initialize Fuse for fallback/fuzzy
-  const fuseInstance = createArabicFuseSearch(quranData, ['simple', 'standard']);
+  const fuzzyEnabled = options.fuzzy !== false;
+  const fuseInstance = fuzzyEnabled
+    ? createArabicFuseSearch(quranData, ['standard', 'uthmani'])
+    : null;
 
   // 3. Run search layers
   const simpleMatches = simpleSearch(quranData, cleanQuery, 'standard');
@@ -339,7 +345,7 @@ export const search = (
   // 4. Combine and Scored Deduplication
   const allMatches = [...simpleMatches, ...advancedMatches];
   const gidSet = new Set<number>();
-  const combined: ScoredQuranText[] = [];
+  const combined: ScoredVerse<TVerse>[] = [];
   const mapEntry = wordMap[cleanQuery];
 
   for (const verse of allMatches) {
@@ -347,7 +353,7 @@ export const search = (
       gidSet.add(verse.gid);
       // Pass fuseMatches if available
       const fuseMatches =
-        'fuseMatches' in verse ? (verse as QuranWithFuseMatches).fuseMatches : undefined;
+        'fuseMatches' in verse ? (verse as VerseWithFuseMatches<TVerse>).fuseMatches : undefined;
       combined.push(
         computeScore(verse, cleanQuery, morphologyMap, wordMap, options, mapEntry, fuseMatches),
       );

@@ -57,30 +57,7 @@ function App() {
         limit: PAGE_SIZE,
       });
 
-      // Filter out fuzzy results if disabled
-      if (!options.fuzzy) {
-        const filteredResults = response.results.filter(
-          (r) => r.matchType !== 'none' && r.matchType !== 'fuzzy',
-        );
-        const filteredCount = filteredResults.length;
-        const newTotalPages = Math.ceil(filteredCount / PAGE_SIZE);
-
-        setSearchResponse({
-          ...response,
-          results: filteredResults,
-          pagination: {
-            ...response.pagination,
-            totalResults: response.counts.total - response.counts.fuzzy, // approximate update
-            totalPages: newTotalPages,
-          },
-          counts: {
-            ...response.counts,
-            fuzzy: 0,
-          },
-        });
-      } else {
-        setSearchResponse(response);
-      }
+      setSearchResponse(response);
     } else {
       setSearchResponse(null);
     }

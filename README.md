@@ -49,6 +49,27 @@ response.results.forEach((v) => {
 // 1 3 lemma 4
 ```
 
+JavaScript (Node / ESM):
+
+```js
+import { search, loadMorphology, loadQuranData, loadWordMap } from 'quran-search-engine';
+
+const [quranData, morphologyMap, wordMap] = await Promise.all([
+  loadQuranData(),
+  loadMorphology(),
+  loadWordMap(),
+]);
+
+const response = search('الله الرحمن', quranData, morphologyMap, wordMap, {
+  lemma: true,
+  root: true,
+});
+
+console.log(response.results[0]);
+// Example output (shape):
+// { gid: 1, matchType: 'exact', matchScore: 6, matchedTokens: ['...'], ... }
+```
+
 ## Public API
 
 Everything documented below is exported from `quran-search-engine` (aligned with `src/index.ts`).
@@ -127,6 +148,8 @@ Main entry point. Combines:
 
 Use case: your primary API for Quran search results + scoring + pagination.
 
+Set `options.fuzzy = false` to disable fuzzy fallback.
+
 ```ts
 import { search } from 'quran-search-engine';
 
@@ -158,6 +181,62 @@ export function containsAllTokens(value: string, query: string): boolean {
   return tokens.every((t) => v.includes(t));
 }
 ```
+
+#### Custom datasets
+
+`search` accepts any dataset shape as long as each record satisfies `VerseInput`:
+
+```ts
+export type VerseInput = {
+  gid: number;
+  uthmani: string;
+  standard: string;
+};
+```
+
+Minimum requirements:
+
+- `gid`: unique verse id (used to join with `morphologyMap`)
+- `standard`: used for exact text matching
+- `uthmani`: used for fuzzy fallback and commonly used for highlighting in UI (if you don’t have it, set it to `standard`)
+
+Custom dataset example:
+
+```ts
+import { search, type VerseInput, type WordMap, type MorphologyAya } from 'quran-search-engine';
+
+type MyVerse = VerseInput & {
+  sura: number;
+  aya: number;
+  translation_en?: string;
+};
+
+const myQuranData: MyVerse[] = [
+  {
+    gid: 1,
+    standard: 'بسم الله الرحمن الرحيم',
+    uthmani: 'بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ',
+    sura: 1,
+    aya: 1,
+    translation_en: 'In the name of Allah, the Entirely Merciful, the Especially Merciful.',
+  },
+];
+
+const morphologyMap = new Map<number, MorphologyAya>();
+const wordMap: WordMap = {};
+
+const response = search('الله الرحمن', myQuranData, morphologyMap, wordMap, {
+  lemma: false,
+  root: false,
+});
+// Example output:
+// response.results[0] => { gid: 1, sura: 1, aya: 1, matchType: 'exact', matchScore: 6, ... }
+```
+
+For lemma/root matching, provide both:
+
+- `morphologyMap: Map<number, MorphologyAya>` where `MorphologyAya` is `{ gid, lemmas: string[], roots: string[] }`
+- `wordMap: WordMap` where each normalized token maps to `{ lemma?: string; root?: string }`
 
 ### Highlighting (UI-agnostic)
 
@@ -312,6 +391,7 @@ Toggles for linguistic matching:
 export type SearchOptions = {
   lemma: boolean;
   root: boolean;
+  fuzzy?: boolean;
 };
 ```
 
