@@ -66,7 +66,7 @@ describe('getPositiveTokens', () => {
       mockMorphologyMap,
     );
 
-    expect(tokens).toContain('ا ل ه');
+    expect(tokens).toContain('الله');
   });
 
   it('should return empty array for no matches', () => {
