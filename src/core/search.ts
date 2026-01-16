@@ -1,5 +1,6 @@
 import Fuse, { type IFuseOptions } from 'fuse.js';
 import { normalizeArabic } from '../utils/normalization';
+import { getPositiveTokens } from './tokenization';
 import type {
   QuranText,
   WordMap,
@@ -30,51 +31,6 @@ export const createArabicFuseSearch = <T>(
   });
 
 // ==================== Utilities ====================
-
-/**
- * Identifies tokens in a verse that match the search criteria.
- * Useful for UI highlighting.
- */
-export const getPositiveTokens = (
-  verse: QuranText,
-  mode: 'text' | 'lemma' | 'root',
-  cleanQuery: string,
-  morphologyMap: Map<number, MorphologyAya>,
-  targetMetadata?: { lemma?: string; root?: string },
-): string[] => {
-  if (!cleanQuery) return [];
-
-  const normalizedQuery = normalizeArabic(cleanQuery);
-
-  if (mode === 'text') {
-    const words = (verse.standard || '')
-      .split(/\s+/)
-      .map((word) => word.replace(/[^\u0621-\u064A]/g, ''));
-    return Array.from(
-      new Set(words.filter((word) => normalizeArabic(word).includes(normalizedQuery))),
-    );
-  }
-
-  const morphology = morphologyMap.get(verse.gid);
-  if (!morphology) return [];
-
-  if (mode === 'lemma' && targetMetadata?.lemma) {
-    const normTarget = normalizeArabic(targetMetadata.lemma);
-    // Find tokens where the lemma matches or contains the target lemma
-    return Array.from(
-      new Set(morphology.lemmas.filter((lemma) => normalizeArabic(lemma).includes(normTarget))),
-    );
-  }
-
-  if (mode === 'root' && targetMetadata?.root) {
-    const normTarget = normalizeArabic(targetMetadata.root);
-    return Array.from(
-      new Set(morphology.roots.filter((root) => normalizeArabic(root).includes(normTarget))),
-    );
-  }
-
-  return [];
-};
 
 // ==================== Simple Search ====================
 export const simpleSearch = <T extends Record<string, unknown>>(
@@ -108,7 +64,14 @@ export const computeScore = (
   let matchType: MatchType = 'none';
 
   // 1. Text (Exact) Matches - Weight: 3
-  const textMatches = getPositiveTokens(verse, 'text', cleanQuery, morphologyMap);
+  const textMatches = getPositiveTokens(
+    verse,
+    'text',
+    undefined,
+    undefined,
+    cleanQuery,
+    morphologyMap,
+  );
   if (textMatches.length > 0) {
     score += textMatches.length * 3;
     matchType = 'exact';
@@ -116,9 +79,14 @@ export const computeScore = (
 
   // 2. Lemma Matches - Weight: 2
   if (options.lemma && mapEntry?.lemma) {
-    const lemmaMatches = getPositiveTokens(verse, 'lemma', cleanQuery, morphologyMap, {
-      lemma: mapEntry.lemma,
-    });
+    const lemmaMatches = getPositiveTokens(
+      verse,
+      'lemma',
+      mapEntry.lemma,
+      undefined,
+      cleanQuery,
+      morphologyMap,
+    );
     if (lemmaMatches.length > 0) {
       score += lemmaMatches.length * 2;
       if (matchType !== 'exact') matchType = 'lemma';
@@ -127,9 +95,14 @@ export const computeScore = (
 
   // 3. Root Matches - Weight: 1
   if (options.root && mapEntry?.root) {
-    const rootMatches = getPositiveTokens(verse, 'root', cleanQuery, morphologyMap, {
-      root: mapEntry.root,
-    });
+    const rootMatches = getPositiveTokens(
+      verse,
+      'root',
+      undefined,
+      mapEntry.root,
+      cleanQuery,
+      morphologyMap,
+    );
     if (rootMatches.length > 0) {
       score += rootMatches.length;
       if (matchType !== 'exact' && matchType !== 'lemma') matchType = 'root';
@@ -208,7 +181,7 @@ export const advancedSearch = (
   if (!cleanQuery) {
     return {
       results: [],
-      counts: { simple: 0, lemma: 0, root: 0, total: 0 },
+      counts: { simple: 0, lemma: 0, root: 0, fuzzy: 0, total: 0 },
       pagination: {
         totalResults: 0,
         totalPages: 0,
@@ -262,6 +235,7 @@ export const advancedSearch = (
     simple: combined.filter((v) => v.matchType === 'exact').length,
     lemma: combined.filter((v) => v.matchType === 'lemma').length,
     root: combined.filter((v) => v.matchType === 'root').length,
+    fuzzy: combined.filter((v) => v.matchType === 'none' || v.matchType === 'fuzzy').length,
     total: combined.length,
   };
 

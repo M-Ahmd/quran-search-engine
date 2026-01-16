@@ -42,6 +42,7 @@ export type SearchCounts = {
   simple: number;
   lemma: number;
   root: number;
+  fuzzy: number;
   total: number;
 };
 

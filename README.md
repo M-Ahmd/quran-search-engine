@@ -192,3 +192,62 @@ export function SearchPage() {
   // ... render results
 }
 ```
+
+---
+
+## Testing & Verification
+
+### Testing & Verification
+
+We provide two ways to test the library:
+
+#### 1. Unit Tests (Recommended)
+
+Comprehensive unit tests using Vitest that cover all core logic:
+
+```bash
+npm test
+# or
+yarn test
+```
+
+These tests cover:
+
+- **Normalization**: Ensures correct handling of Arabic diacritics, unification of Alefs/Hamzas.
+- **Tokenization**: Verifies how text is split and matched against queries (Exact/Lemma/Root).
+- **Search Logic**: Validates `simpleSearch` and `advancedSearch` algorithms, including scoring and pagination.
+- **Data Loading**: Ensures the large JSON datasets load correctly and have the expected structure.
+
+#### 2. Verification Script (Manual)
+
+A standalone script to perform a "smoke test" in a real Node.js environment. It loads the actual data files and runs a series of real-world queries.
+
+```bash
+npx tsx scripts/verify-loader.ts
+```
+
+This is useful for:
+
+- Verifying the build/data integrity.
+- Seeing real performance metrics (execution time).
+- Debugging without the test runner overhead.
+
+---
+
+## Example Application
+
+A complete React + TypeScript example is available in the `example/` folder. This demonstrates:
+
+- Integration with Vite
+- Real-time search implementation
+- UI highlighting of matched tokens
+- Pagination handling
+- Performance optimizations
+
+To run the example:
+
+```bash
+cd example
+npm install
+npm run dev
+```

@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-01-16
+
+### Added
+
+- **Example Application**: Added a complete React + Vite example in the `example/` directory demonstrating real-time search, highlighting, and pagination.
+- **Unit Tests**: Added comprehensive test suite using Vitest covering:
+  - Tokenization (Exact, Lemma, Root matching).
+  - Search logic (`simpleSearch` and `advancedSearch`).
+  - Arabic normalization (`removeTashkeel`, `normalizeArabic`).
+  - Data loading utilities.
+- **Documentation**: Updated `README.md` with detailed testing instructions and example usage.
+
+### Fixed
+
+- Fixed edge case in `tokenization` where empty normalized queries could return false positives.
+- Corrected test logic in `search.test.ts` to accurately reflect token matching behavior.
+
 ## [0.1.0] - 2026-01-16
 
 ### Added

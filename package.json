@@ -1,7 +1,7 @@
 {
   "name": "quran-search-engine",
-  "version": "0.2.0",
-  "description": "Framework-agnostic advanced Quranic search engine",
+  "version": "0.1.2",
+  "description": "A powerful, stateless, and pure TypeScript search engine for the Quran.",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",

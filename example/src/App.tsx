@@ -11,7 +11,8 @@ import {
   type ScoredQuranText,
   type SearchResponse,
 } from 'quran-search-engine';
-import { Search, Loader2, ChevronLeft, ChevronRight, Hash } from 'lucide-react';
+import { Search, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useDebounce } from './useDebounce';
 import './App.css';
 
 function App() {
@@ -21,8 +22,10 @@ function App() {
   const [loading, setLoading] = useState(true);
 
   const [query, setQuery] = useState('');
+  const debouncedQuery = useDebounce(query, 300);
+
   const [searchResponse, setSearchResponse] = useState<SearchResponse | null>(null);
-  const [options, setOptions] = useState({ lemma: true, root: true });
+  const [options, setOptions] = useState({ lemma: true, root: true, fuzzy: true });
   const [currentPage, setCurrentPage] = useState(1);
   const PAGE_SIZE = 10;
 
@@ -49,21 +52,50 @@ function App() {
 
   // 2. Search Logic
   useEffect(() => {
-    if (!loading && quranData.length > 0 && morphologyMap && wordMap && query.trim()) {
-      const response = advancedSearch(query, quranData, morphologyMap, wordMap, options, {
+    if (!loading && quranData.length > 0 && morphologyMap && wordMap && debouncedQuery.trim()) {
+      const response = advancedSearch(debouncedQuery, quranData, morphologyMap, wordMap, options, {
         page: currentPage,
         limit: PAGE_SIZE,
       });
-      setSearchResponse(response);
+
+      // Filter out fuzzy results if disabled
+      if (!options.fuzzy) {
+        const filteredResults = response.results.filter(
+          (r) => r.matchType !== 'none' && r.matchType !== 'fuzzy',
+        );
+        const filteredCount = filteredResults.length;
+        const newTotalPages = Math.ceil(filteredCount / PAGE_SIZE);
+
+        // Since pagination is done in the library, we might have fewer results than PAGE_SIZE if we filter here.
+        // For a perfect implementation, the library should handle this flag.
+        // But for this demo, filtering the current page's results is a visual fix.
+        // A better approach is to pass this option to the library if supported.
+        // Since the library currently returns a page slice, client-side filtering after pagination is tricky
+        // because it reduces the page size.
+        // Ideally, we should update the library to accept a 'fuzzy' option.
+        // For now, let's just visually hide them or accept that the page might be shorter.
+
+        setSearchResponse({
+          ...response,
+          results: filteredResults,
+          pagination: {
+            ...response.pagination,
+            totalResults: response.counts.total - response.counts.fuzzy, // approximate update
+            totalPages: newTotalPages,
+          },
+        });
+      } else {
+        setSearchResponse(response);
+      }
     } else {
       setSearchResponse(null);
     }
-  }, [query, options, currentPage, quranData, morphologyMap, wordMap, loading]);
+  }, [debouncedQuery, options, currentPage, quranData, morphologyMap, wordMap, loading]);
 
   // Reset page when query or options change
   useEffect(() => {
     setCurrentPage(1);
-  }, [query, options]);
+  }, [debouncedQuery, options]);
 
   if (loading) {
     return (
@@ -91,7 +123,7 @@ function App() {
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
-        <Search size={24} color="#666" />
+        <Search className="search-icon" size={24} />
       </div>
 
       <div className="options-group">
@@ -111,14 +143,46 @@ function App() {
           />
           Root Search
         </label>
+        <label className="option-item">
+          <input
+            type="checkbox"
+            checked={options.fuzzy}
+            onChange={(e) => setOptions({ ...options, fuzzy: e.target.checked })}
+          />
+          Fuzzy Search
+        </label>
       </div>
 
       {searchResponse && (
         <>
           <div className="results-info">
-            Found <strong>{searchResponse.pagination.totalResults}</strong> matches
-            {searchResponse.pagination.totalResults > 0 &&
-              ` (showing page ${searchResponse.pagination.currentPage} of ${searchResponse.pagination.totalPages})`}
+            <div className="results-count">
+              Found <strong>{searchResponse.pagination.totalResults}</strong> matches
+              {searchResponse.pagination.totalResults > 0 &&
+                ` (showing page ${searchResponse.pagination.currentPage} of ${searchResponse.pagination.totalPages})`}
+            </div>
+            <div className="results-stats">
+              <span className="stat-item">
+                <span className="indicator indicator-exact"></span>
+                <span className="stat-label">Exact:</span>
+                <span className="stat-value">{searchResponse.counts.simple}</span>
+              </span>
+              <span className="stat-item">
+                <span className="indicator indicator-lemma"></span>
+                <span className="stat-label">Lemma:</span>
+                <span className="stat-value">{searchResponse.counts.lemma}</span>
+              </span>
+              <span className="stat-item">
+                <span className="indicator indicator-root"></span>
+                <span className="stat-label">Root:</span>
+                <span className="stat-value">{searchResponse.counts.root}</span>
+              </span>
+              <span className="stat-item">
+                <span className="indicator indicator-fuzzy"></span>
+                <span className="stat-label">Fuzzy:</span>
+                <span className="stat-value">{searchResponse.counts.fuzzy}</span>
+              </span>
+            </div>
           </div>
 
           <div className="results-list">
@@ -175,23 +239,60 @@ function VerseItem({
     const cleanQuery = query.replace(/[^\u0621-\u064A\s]/g, '').trim();
     const mode =
       verse.matchType === 'root' || verse.matchType === 'lemma' ? verse.matchType : 'text';
-    return getPositiveTokens(verse, mode, cleanQuery, morphologyMap, wordMap[cleanQuery]);
+
+    const wordEntry = wordMap[cleanQuery];
+    return getPositiveTokens(
+      verse,
+      mode,
+      wordEntry?.lemma,
+      wordEntry?.root,
+      cleanQuery,
+      morphologyMap,
+    );
   }, [verse, query, morphologyMap, wordMap]);
 
   const highlightVerse = (text: string, matchedTokens: string[]) => {
     if (matchedTokens.length === 0) return text;
 
+    // Determine the highlight class based on the verse match type
+    const matchType = verse.matchType === 'none' ? 'fuzzy' : verse.matchType;
+    const highlightClass = `highlight highlight-${matchType}`;
+
     // Sort tokens by length (longer first) to avoid partial matches
     const sortedTokens = [...matchedTokens].sort((a, b) => b.length - a.length);
 
-    // Create a regex to match any of the tokens
-    // Note: This is an oversimplification for the demo.
-    // In a real app, word-boundary aware splitting is better.
+    // Create a regex to match the token with optional diacritics between letters
+    const createDiacriticRegex = (token: string) => {
+      // Normalize Alefs in the token first to handle simple vs standard mismatch
+      const normalizedToken = token.replace(/[أإآ]/g, 'ا');
+      const escaped = normalizedToken.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+      // Arabic diacritics range (Tashkeel + others) INCLUDING Dagger Alif and Tatweel
+      // We use non-greedy matching (*?)
+      // \u0640 is Tatweel (Kashida)
+      const tashkeel = '[\\u064B-\\u065F\\u0670\\u06D6-\\u06ED\\u0640]*?';
+
+      // Match Alef variants (أ, إ, آ, ٱ, ا) interchangeably if the token has 'ا'
+      // Match Ya/Alef Maqsura variants (ي, ى) interchangeably
+      // Match Ta Marbuta/Ha variants (ة, ه) interchangeably (optional but robust)
+      const letters = escaped.split('').map((char) => {
+        if (char === 'ا') return '[اأإآٱ\\u0670]';
+        if (char === 'ي') return '[يى]';
+        if (char === 'ى') return '[ىي]';
+        if (char === 'ة') return '[ةه]';
+        if (char === 'ه') return '[هة]';
+        return char;
+      });
+
+      return new RegExp(`(${letters.join(tashkeel)})`, 'g');
+    };
+
     let highlighted = text;
     for (const token of sortedTokens) {
-      // We use a temporary placeholder to avoid double-highlighting
-      const regex = new RegExp(`(${token})`, 'g');
-      highlighted = highlighted.replace(regex, '<span class="highlight">$1</span>');
+      // Use the diacritic-aware regex
+      const regex = createDiacriticRegex(token);
+      // Use $1 to preserve the actual matched text (with its diacritics)
+      highlighted = highlighted.replace(regex, `<span class="${highlightClass}">$1</span>`);
     }
     return <div dangerouslySetInnerHTML={{ __html: highlighted }} />;
   };
@@ -203,7 +304,7 @@ function VerseItem({
           {verse.sura_name} ({verse.sura_id}:{verse.aya_id})
         </span>
         <span className={`match-tag tag-${verse.matchType}`}>
-          {verse.matchType} (Score: {verse.matchScore})
+          {verse.matchType === 'none' ? 'fuzzy' : verse.matchType} (Score: {verse.matchScore})
         </span>
       </div>
       <div className="verse-arabic">{highlightVerse(verse.uthmani, tokens)}</div>
