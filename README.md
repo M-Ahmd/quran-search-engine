@@ -3,6 +3,7 @@
 ![npm](https://img.shields.io/npm/v/quran-search-engine)
 ![TypeScript](https://img.shields.io/badge/ts-yes-blue)
 ![downloads](https://img.shields.io/npm/dm/quran-search-engine)
+[![Changelog](https://img.shields.io/badge/changelog-view-brightgreen)](https://github.com/adelpro/quran-search-engine/releases)
 ![license](https://img.shields.io/npm/l/quran-search-engine)
 
 A stateless, pure TypeScript search engine for Quranic text with:

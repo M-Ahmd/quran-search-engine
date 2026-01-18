@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Documentation**: Added a changelog badge to `README.md` linking to GitHub releases
+- **CI/CD**: Added `prepublishOnly` script to `package.json` to automate builds before npm publishing
+- **Distribution**: Configured package to include `CHANGELOG.md` in the published npm bundle
+
+### Fixed
+
+- **Husky**: Fixed "DEPRECATED" warnings by migratng Git hooks to the simplified Husky v9 format
+
 ## [0.1.4] - 2026-01-18
 
 ### Added

@@ -1,6 +1,6 @@
 {
   "name": "quran-search-engine",
-  "version": "0.1.4",
+  "version": "0.1.5-unreleased",
   "description": "A powerful, stateless, and pure TypeScript search engine for the Quran.",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
@@ -13,7 +13,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "CHANGELOG.md"
   ],
   "repository": {
     "type": "git",
