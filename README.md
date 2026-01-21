@@ -643,7 +643,7 @@ This script performs **integration testing** that validates the complete search 
 
 ### Test Structure
 
-```
+```bash
 src/
 ├── core/
 │   ├── search.test.ts       # Search algorithm tests
