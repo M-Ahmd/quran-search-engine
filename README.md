@@ -583,6 +583,9 @@ Several example applications are available in the `examples/` directory:
 - **Angular**: Standalone Angular app with highlighted results (`examples/angular`)
 - **Node.js**: Server-side search with command-line interface (`examples/nodejs`)
 
+> **New Feature**: All examples now include **Smart Conflict Detection**, which automatically identifies zero-result scenarios (e.g., correct Surah Name but wrong Juz ID) and provides specific, localized guidance to the user.
+
+
 To run an example:
 
 ```bash

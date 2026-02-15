@@ -91,6 +91,10 @@ type HighlightPart = { text: string; matchType: MatchType | null };
           {{ errorMessage }}
         </div>
 
+        <div *ngIf="uxMessage" class="error" role="alert" style="margin: 10px 0; padding: 10px; background: rgba(255,0,0,0.1); border-left: 3px solid red;" dir="rtl">
+          <strong>تنبيه:</strong> {{ uxMessage }}
+        </div>
+
         <ng-container *ngIf="loadState === 'ready'">
           <div *ngIf="!response" class="muted">Type an Arabic query to see results.</div>
 
@@ -314,7 +318,7 @@ export class AppComponent implements OnInit, OnDestroy {
   page = 1;
   limit = 20;
 
-  options: { lemma: boolean; root: boolean; fuzzy: boolean ;suraId?: number; juzId?: number; suraName?: string; } = {
+  options: { lemma: boolean; root: boolean; fuzzy: boolean; suraId?: number; juzId?: number; suraName?: string; } = {
     lemma: true,
     root: true,
     fuzzy: true,
@@ -322,6 +326,7 @@ export class AppComponent implements OnInit, OnDestroy {
   };
 
   response: SearchResponse<QuranText> | null = null;
+  uxMessage: string | null = null;
 
   private quranData: QuranText[] | null = null;
   private morphologyMap: Map<number, MorphologyAya> | null = null;
@@ -397,6 +402,52 @@ export class AppComponent implements OnInit, OnDestroy {
       searchOptions,
       { page: this.page, limit: this.limit },
     );
+
+    // [NEW] UX Logic
+    this.uxMessage = null;
+    if (this.response.pagination.totalResults === 0 && trimmed) {
+      const opts = this.options;
+      const quranData = this.quranData;
+      const morphologyMap = this.morphologyMap;
+      const wordMap = this.wordMap;
+
+      // 1. Name vs ID Check
+      if (opts.suraName && opts.suraId) {
+        const res = search(trimmed, quranData, morphologyMap, wordMap, { ...opts, suraId: undefined, juzId: undefined }, { limit: 1 });
+        if (res.results.length > 0) {
+          const match = res.results[0];
+          if (match.sura_id !== opts.suraId) {
+            this.uxMessage = `سورة ${opts.suraName} هي رقم ${match.sura_id} في الجزء ${match.juz_id}. يرجى تعديل الرقم أو ترك الحقل فارغ.`;
+          }
+        }
+      }
+
+      // 2. Sura vs Juz Check
+      if (!this.uxMessage && (opts.suraId || opts.suraName) && opts.juzId) {
+        const res = search(trimmed, quranData, morphologyMap, wordMap, { ...opts, juzId: undefined }, { limit: 1 });
+        if (res.results.length > 0) {
+          const match = res.results[0];
+          if (match.juz_id !== opts.juzId) {
+            const name = opts.suraName || `رقم ${opts.suraId}`;
+            this.uxMessage = `سورة ${name} موجودة في الجزء ${match.juz_id}. يرجى تعديل رقم الجزء.`;
+          }
+        }
+      }
+
+      // 3. Global Check
+      if (!this.uxMessage) {
+        const globalRes = search(trimmed, quranData, morphologyMap, wordMap,
+          { ...opts, suraId: undefined, juzId: undefined, suraName: undefined },
+          { limit: 1 }
+        );
+
+        if (globalRes.results.length > 0) {
+          this.uxMessage = "لا توجد نتائج ضمن الفلاتر الحالية، لكن توجد نتائج في أماكن أخرى من القرآن.";
+        } else {
+          this.uxMessage = "لا توجد نتائج مطلقًا.";
+        }
+      }
+    }
 
     this.rebuildHighlightCache();
   }

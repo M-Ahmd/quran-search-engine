@@ -1,5 +1,38 @@
 import { loadQuranData, loadMorphology, loadWordMap, search } from 'quran-search-engine';
 
+function getConflictMessage(query, options, quranData) {
+    // 1. Name vs ID Check
+    if (options.suraName && options.suraId) {
+        const check = search(query, quranData, null, null, { ...options, suraId: undefined, juzId: undefined }, { limit: 1 });
+        if (check.pagination.totalResults > 0) {
+            const m = check.results[0];
+            if (m.sura_id !== options.suraId) {
+                return `سورة ${options.suraName} هي رقم ${m.sura_id} في الجزء ${m.juz_id}. يرجى تعديل الرقم أو ترك الحقل فارغ.`;
+            }
+        }
+    }
+
+    // 2. Sura vs Juz Check
+    if ((options.suraId || options.suraName) && options.juzId) {
+        const check = search(query, quranData, null, null, { ...options, juzId: undefined }, { limit: 1 });
+        if (check.pagination.totalResults > 0) {
+            const m = check.results[0];
+            if (m.juz_id !== options.juzId) {
+                const name = options.suraName || `رقم ${options.suraId}`;
+                return `سورة ${name} موجودة في الجزء ${m.juz_id}. يرجى تعديل رقم الجزء.`;
+            }
+        }
+    }
+
+    // 3. Global Check
+    const globalCheck = search(query, quranData, null, null, { lemma: options.lemma, root: options.root, fuzzy: options.fuzzy }, { limit: 1 });
+    if (globalCheck.pagination.totalResults > 0) {
+        return "لا توجد نتائج ضمن الفلاتر الحالية، لكن توجد نتائج في أماكن أخرى من القرآن.";
+    }
+
+    return "لا توجد نتائج مطلقًا.";
+}
+
 async function main() {
     console.log('🚀 Loading Quran Search Engine data...\n');
 
@@ -39,7 +72,7 @@ async function main() {
                     fuzzy: true,
                     suraId: example.suraId, //+  dynamic Injection
                     juzId: example.juzId,  //+  dynami Injection
-                    
+
                 },
                 {
                     page: 1,
@@ -48,6 +81,15 @@ async function main() {
             );
 
             console.log(`📊 Found ${results.pagination.totalResults} matches`);
+
+            if (results.pagination.totalResults === 0) {
+                const msg = getConflictMessage(example.query, {
+                    suraId: example.suraId,
+                    juzId: example.juzId,
+                    lemma: true, root: true, fuzzy: true
+                }, quranData);
+                console.log(`⚠️  ${msg}`);
+            }
             console.log(`   - Exact: ${results.counts.simple}`);
             console.log(`   - Lemma: ${results.counts.lemma}`);
             console.log(`   - Root: ${results.counts.root}`);
@@ -88,6 +130,11 @@ async function main() {
             );
 
             console.log(`📊 Found ${customResults.pagination.totalResults} matches\n`);
+
+            if (customResults.pagination.totalResults === 0) {
+                const msg = getConflictMessage(queryArg, { lemma: true, root: true, fuzzy: true }, quranData);
+                console.log(`⚠️  ${msg}\n`);
+            }
 
             customResults.results.forEach((verse, index) => {
                 console.log(`${index + 1}. ${verse.sura_name} (${verse.sura_id}:${verse.aya_id})`);
