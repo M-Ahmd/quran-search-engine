@@ -11,7 +11,6 @@ coverage
 dist
 *.tsbuildinfo
 .angular
-examples/angular/.angular
 .vite
 node_modules/.vite
 examples/**/dist
