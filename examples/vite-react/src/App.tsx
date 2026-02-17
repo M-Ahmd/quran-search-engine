@@ -24,7 +24,7 @@ function App() {
   const debouncedQuery = useDebounce(query, 300);
 
   const [searchResponse, setSearchResponse] = useState<SearchResponse | null>(null);
-  const [uxMessage, setUxMessage] = useState<string | null>(null);
+
   const [options, setOptions] = useState({
     lemma: true,
     root: true,
@@ -36,42 +36,7 @@ function App() {
   const [currentPage, setCurrentPage] = useState(1);
   const PAGE_SIZE = 10;
 
-  const checkConflicts = (query: string, opts: any) => {
-    // 1. Name vs ID Check
-    if (opts.suraName && opts.suraId) {
-      const res = search(query, quranData, morphologyMap!, wordMap!, { ...opts, suraId: undefined, juzId: undefined }, { limit: 1 });
-      if (res.results.length > 0) {
-        const match = res.results[0];
-        if (match.sura_id !== opts.suraId) {
-          return `سورة ${opts.suraName} هي رقم ${match.sura_id} في الجزء ${match.juz_id}. يرجى تعديل الرقم أو ترك الحقل فارغ.`;
-        }
-      }
-    }
 
-    // 2. Sura vs Juz Check
-    if ((opts.suraId || opts.suraName) && opts.juzId) {
-      const res = search(query, quranData, morphologyMap!, wordMap!, { ...opts, juzId: undefined }, { limit: 1 });
-      if (res.results.length > 0) {
-        const match = res.results[0];
-        if (match.juz_id !== opts.juzId) {
-          const name = opts.suraName || `رقم ${opts.suraId}`;
-          return `سورة ${name} موجودة في الجزء ${match.juz_id}. يرجى تعديل رقم الجزء.`;
-        }
-      }
-    }
-
-    // 3. Global Check
-    const globalRes = search(query, quranData, morphologyMap!, wordMap!,
-      { ...opts, suraId: undefined, juzId: undefined, suraName: undefined },
-      { limit: 1 }
-    );
-
-    if (globalRes.results.length > 0) {
-      return "لا توجد نتائج ضمن الفلاتر الحالية، لكن توجد نتائج في أماكن أخرى من القرآن.";
-    }
-
-    return "لا توجد نتائج مطلقًا.";
-  };
 
   // 1. Initial Data Loading
   useEffect(() => {
@@ -104,12 +69,7 @@ function App() {
 
       setSearchResponse(response);
 
-      if (response.pagination.totalResults === 0 && debouncedQuery) {
-        const msg = checkConflicts(debouncedQuery, options);
-        setUxMessage(msg);
-      } else {
-        setUxMessage(null);
-      }
+
     } else {
       setSearchResponse(null);
     }
@@ -206,16 +166,7 @@ function App() {
 
       {searchResponse && (
         <>
-          {uxMessage && (
-            <div style={{
-              padding: '1rem', marginBottom: '1rem',
-              background: '#fff5f5', color: '#c53030',
-              borderRadius: '0.5rem', border: '1px solid #fc8181',
-              textAlign: 'right', direction: 'rtl'
-            }}>
-              <strong>تنبيه:</strong> {uxMessage}
-            </div>
-          )}
+
           <div className="results-info">
             <div className="results-count">
               Found <strong>{searchResponse.pagination.totalResults}</strong> matches
