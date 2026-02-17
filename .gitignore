@@ -10,11 +10,6 @@ coverage
 # Build
 dist
 *.tsbuildinfo
-.angular
-.vite
-node_modules/.vite
-examples/**/dist
-
 
 # Misc
 .DS_Store
@@ -24,10 +19,4 @@ examples/**/dist
 *.log
 npm-debug.log*
 yarn-debug.log*
-
-# System Files
-Thumbs.db
-desktop.ini
 yarn-error.log*
-
-

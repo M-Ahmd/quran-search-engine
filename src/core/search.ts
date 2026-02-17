@@ -47,28 +47,40 @@ export const filterVerses = <TVerse extends VerseInput>(
   juzId?: number,
   suraName?: string,
 ): TVerse[] => {
-  // If no filters are requested, return original data to avoid unnecessary iteration
-  if (suraId === undefined && juzId === undefined && suraName === undefined) return data;
-  // Apply cumulative filtering
+  // 1. Priority: suraId
+  if (typeof suraId === 'number' && suraId > 0) {
+    const results = data.filter((v) => v['sura_id'] === suraId);
+    if (results.length > 0) return results;
+  }
 
-  const normalizedQueryName = suraName ? normalizeArabic(suraName).toLowerCase().trim() : undefined;
-  return data.filter((verse) => {
-    const matchesSura = suraId === undefined || verse.sura_id === suraId;
-    const matchesJuz = juzId === undefined || verse.juz_id === juzId;
-    // Verify Name (Arabe + Anglais + Romanisation)
-    let matchesSuraName = true;
-    if (normalizedQueryName) {
-      const normalizedSuraName = verse.sura_name ? normalizeArabic(verse.sura_name) : '';
-      const enName = (verse.sura_name_en || '').toLowerCase();
-      const romName = (verse.sura_name_romanization || '').toLowerCase();
-      matchesSuraName =
-        normalizedSuraName.includes(normalizedQueryName) ||
-        enName.includes(normalizedQueryName) ||
-        romName.includes(normalizedQueryName);
+  // 2. Priority: suraName
+  if (suraName) {
+    const normalizedQuery = normalizeArabic(suraName).toLowerCase().trim();
+    if (normalizedQuery) {
+      const results = data.filter((verse) => {
+        const normalizedSuraName = verse['sura_name']
+          ? normalizeArabic(verse['sura_name'] as string)
+          : '';
+        const enName = ((verse['sura_name_en'] as string) || '').toLowerCase();
+        const romName = ((verse['sura_name_romanization'] as string) || '').toLowerCase();
+        return (
+          normalizedSuraName.includes(normalizedQuery) ||
+          enName.includes(normalizedQuery) ||
+          romName.includes(normalizedQuery)
+        );
+      });
+      if (results.length > 0) return results;
     }
+  }
 
-    return matchesSura && matchesJuz && matchesSuraName;
-  });
+  // 3. Priority: juzId
+  if (juzId !== undefined) {
+    const results = data.filter((v) => v['juz_id'] === juzId);
+    if (results.length > 0) return results;
+  }
+
+  // 4. Fallback: Return original data (no structural filter matched)
+  return data;
 };
 // ==================== Simple Search ====================
 export const simpleSearch = <T extends Record<string, unknown>>(

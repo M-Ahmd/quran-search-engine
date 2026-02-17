@@ -16,7 +16,6 @@ Stateless, UI-agnostic Quran (Qur'an) search engine for Arabic text in pure Type
 - Exact text search
 - Lemma + root matching (via morphology + word map)
 - Highlight ranges (UI-agnostic)
-- Surah and Juz filtering 
 
 ## Table of contents
 
@@ -129,7 +128,6 @@ const [quranData, morphologyMap, wordMap] = await Promise.all([
 const response: SearchResponse = search('الله الرحمن', quranData, morphologyMap, wordMap, {
   lemma: true,
   root: true,
-  suraId: 1, //
 });
 
 response.results.forEach((v) => {
@@ -241,7 +239,15 @@ Main entry point. Combines:
 
 Use case: your primary API for Quran search results + scoring + pagination.
 
-Set `options.fuzzy = false` to disable fuzzy fallback.
+#### Filter Priority
+
+The API enforces a **strict deterministic priority** when multiple structural filters are provided:
+
+1.  **`suraId`**: If a valid number (`> 0`), it overrides all other structural filters.
+2.  **`suraName`**: Used if `suraId` is invalid or missing.
+3.  **`juzId`**: Used only if both Surah filters are invalid or missing.
+
+No combinations (AND logic) are applied between these three.
 
 ```ts
 import { search } from 'quran-search-engine';
@@ -251,13 +257,13 @@ const response = search(
   quranData,
   morphologyMap,
   wordMap,
-  { lemma: true, root: true ,suraId: 114,juzId: 30}, 
+  { lemma: true, root: true, suraId: 114, juzId: 30 },
   { page: 1, limit: 10 },
 );
 // Example output:
-// response.pagination => { totalResults: 42, totalPages: 5, currentPage: 1, limit: 10 }
-// response.counts => { simple: 10, lemma: 18, root: 9, fuzzy: 5, total: 42 }
-// response.results[0] => { gid: 123, matchType: 'exact', matchScore: 9, matchedTokens: ['...'], ... }
+// response.pagination => { totalResults: 6, totalPages: 1, currentPage: 1, limit: 10 }
+// response.counts => { simple: 2, lemma: 3, root: 4, fuzzy: 0, total: 6 }
+// response.results[0] => { gid: 6231, sura_id: 114, ... } (Results restricted to Surah 114)
 ```
 
 | Match type | Score per hit        |
@@ -492,8 +498,8 @@ export type SearchOptions = {
   lemma: boolean;
   root: boolean;
   fuzzy?: boolean;
-  suraId?: number; 
-  juzId?: number; 
+  suraId?: number;
+  juzId?: number;
   suraName?: string;
 };
 ```
@@ -582,9 +588,6 @@ Several example applications are available in the `examples/` directory:
 - **Vanilla TypeScript**: Simple browser-based search without frameworks (`examples/vanilla-ts`)
 - **Angular**: Standalone Angular app with highlighted results (`examples/angular`)
 - **Node.js**: Server-side search with command-line interface (`examples/nodejs`)
-
-> **New Feature**: All examples now include **Smart Conflict Detection**, which automatically identifies zero-result scenarios (e.g., correct Surah Name but wrong Juz ID) and provides specific, localized guidance to the user.
-
 
 To run an example:
 

@@ -15,7 +15,7 @@ class QuranSearchApp {
   private morphologyMap: Map<number, MorphologyAya> | null = null;
   private wordMap: WordMap | null = null;
   private loading = true;
-  private uxMessage: string | null = null;
+
 
   private searchInput: HTMLInputElement;
   private lemmaCheckbox: HTMLInputElement;
@@ -98,10 +98,7 @@ class QuranSearchApp {
         limit: 20,
       });
 
-      this.uxMessage = null;
-      if (response.pagination.totalResults === 0 && query) {
-        this.uxMessage = this.checkConflicts(query, options);
-      }
+
 
       this.renderResults(response);
     } catch (error) {
@@ -112,15 +109,7 @@ class QuranSearchApp {
 
   private renderResults(response: SearchResponse) {
     if (!response.results.length) {
-      if (this.uxMessage) {
-        this.resultsDiv.innerHTML = `
-           <div class="results-info" style="background: #fff3cd; color: #856404; border-color: #ffeeba;">
-             <p style="margin: 0; font-weight: bold; text-align: right;" dir="rtl">⚠️ ${this.uxMessage}</p>
-           </div>
-         `;
-      } else {
-        this.resultsDiv.innerHTML = '<p>No results found.</p>';
-      }
+      this.resultsDiv.innerHTML = '<p>No results found.</p>';
       return;
     }
 
@@ -201,45 +190,7 @@ class QuranSearchApp {
     this.resultsDiv.innerHTML = `<div style="color: red; padding: 20px;">${message}</div>`;
   }
 
-  private checkConflicts(query: string, opts: any): string {
-    const { quranData, morphologyMap: morph, wordMap } = this;
-    if (!quranData || !morph || !wordMap) return "لا توجد نتائج مطلقًا.";
 
-    // 1. Name vs ID Check
-    if (opts.suraName && opts.suraId) {
-      const res = search(query, quranData, morph, wordMap, { ...opts, suraId: undefined, juzId: undefined }, { limit: 1 });
-      if (res.results.length > 0) {
-        const match = res.results[0];
-        if (match.sura_id !== opts.suraId) {
-          return `سورة ${opts.suraName} هي رقم ${match.sura_id} في الجزء ${match.juz_id}. يرجى تعديل الرقم أو ترك الحقل فارغ.`;
-        }
-      }
-    }
-
-    // 2. Sura vs Juz Check
-    if ((opts.suraId || opts.suraName) && opts.juzId) {
-      const res = search(query, quranData, morph, wordMap, { ...opts, juzId: undefined }, { limit: 1 });
-      if (res.results.length > 0) {
-        const match = res.results[0];
-        if (match.juz_id !== opts.juzId) {
-          const name = opts.suraName || `رقم ${opts.suraId}`;
-          return `سورة ${name} موجودة في الجزء ${match.juz_id}. يرجى تعديل رقم الجزء.`;
-        }
-      }
-    }
-
-    // 3. Global Check
-    const globalRes = search(query, quranData, morph, wordMap,
-      { ...opts, suraId: undefined, juzId: undefined, suraName: undefined },
-      { limit: 1 }
-    );
-
-    if (globalRes.results.length > 0) {
-      return "لا توجد نتائج ضمن الفلاتر الحالية، لكن توجد نتائج في أماكن أخرى من القرآن.";
-    }
-
-    return "لا توجد نتائج مطلقًا.";
-  }
 }
 
 // Initialize the app when DOM is loaded
