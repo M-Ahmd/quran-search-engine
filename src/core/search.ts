@@ -37,6 +37,51 @@ export const createArabicFuseSearch = <T>(
 
 // ==================== Utilities ====================
 
+// ==================== Filtering Logic ====================
+
+// Filters a collection of verses by Surah and Juz IDs
+
+export const filterVerses = <TVerse extends VerseInput>(
+  data: TVerse[],
+  suraId?: number,
+  juzId?: number,
+  suraName?: string,
+): TVerse[] => {
+  // 1. Priority: suraId
+  if (typeof suraId === 'number' && suraId > 0) {
+    const results = data.filter((v) => v['sura_id'] === suraId);
+    if (results.length > 0) return results;
+  }
+
+  // 2. Priority: suraName
+  if (suraName) {
+    const normalizedQuery = normalizeArabic(suraName).toLowerCase().trim();
+    if (normalizedQuery) {
+      const results = data.filter((verse) => {
+        const normalizedSuraName = verse['sura_name']
+          ? normalizeArabic(verse['sura_name'] as string)
+          : '';
+        const enName = ((verse['sura_name_en'] as string) || '').toLowerCase();
+        const romName = ((verse['sura_name_romanization'] as string) || '').toLowerCase();
+        return (
+          normalizedSuraName.includes(normalizedQuery) ||
+          enName.includes(normalizedQuery) ||
+          romName.includes(normalizedQuery)
+        );
+      });
+      if (results.length > 0) return results;
+    }
+  }
+
+  // 3. Priority: juzId
+  if (juzId !== undefined) {
+    const results = data.filter((v) => v['juz_id'] === juzId);
+    if (results.length > 0) return results;
+  }
+
+  // 4. Fallback: Return original data (no structural filter matched)
+  return data;
+};
 // ==================== Simple Search ====================
 export const simpleSearch = <T extends Record<string, unknown>>(
   items: T[],
@@ -326,16 +371,17 @@ export const search = <TVerse extends VerseInput>(
   }
 
   const fuzzyEnabled = options.fuzzy !== false;
+  const filteredData = filterVerses(quranData, options.suraId, options.juzId, options.suraName); //+ Filter collection based on Surah and Juz identifiers
+  //  replace quranData with filteredData
   const fuseInstance = fuzzyEnabled
-    ? createArabicFuseSearch(quranData, ['standard', 'uthmani'])
+    ? createArabicFuseSearch(filteredData, ['standard', 'uthmani'])
     : null;
 
-  // 3. Run search layers
-  const simpleMatches = simpleSearch(quranData, cleanQuery, 'standard');
-
+  // 3. Run search layers  +remplacez quranData par filteredData
+  const simpleMatches = simpleSearch(filteredData, cleanQuery, 'standard');
   const advancedMatches = performAdvancedLinguisticSearch(
     cleanQuery,
-    quranData,
+    filteredData, //remplacez quranData par filteredData
     options,
     fuseInstance,
     wordMap,
