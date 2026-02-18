@@ -41,3 +41,16 @@ export const normalizeArabic = (text: string): string => {
 
   return normalizedText.trim();
 };
+
+/**
+ * Checks if the given text contains Arabic characters.
+ * Unicode range: U+0600 to U+06FF (Arabic block) ???? Is this sufficient? I haven't tested such a range before.
+ *
+ * @param text The input Arabic text
+ * @returns True if the text contains Arabic characters, false otherwise
+ */
+
+export const isArabic = (text: string): boolean => {
+  if (!text) return false;
+  return /[\u0600-\u06FF]/.test(text);
+};
