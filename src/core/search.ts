@@ -310,8 +310,10 @@ export const search = <TVerse extends VerseInput>(
   pagination: PaginationOptions = { page: 1, limit: 20 },
   cache?: LRUCache<string, SearchResponse<TVerse>>,
 ): SearchResponse<TVerse> => {
-  // Cache lookup
-  const cacheKey = cache ? JSON.stringify({ query, options, pagination }) : '';
+  // Cache lookup (deterministic key from known fields — avoids property-order issues with JSON.stringify)
+  const cacheKey = cache
+    ? `${query}|l:${!!options.lemma}|r:${!!options.root}|f:${options.fuzzy ?? true}|p:${pagination.page ?? 1}|lim:${pagination.limit ?? 20}`
+    : '';
   if (cache) {
     const cached = cache.get(cacheKey);
     if (cached) return cached;
