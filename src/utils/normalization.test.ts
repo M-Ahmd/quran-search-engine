@@ -65,7 +65,7 @@ describe('Normalization Utils', () => {
 
   describe('isArabic', () => {
     it('Should return true for Arabic text', () => {
-      const input = 'السلام عليكم';
+      const input = 'الْحَمْدُ لِلَّهِ رَبِّ الْعَالَمِينَ';
       expect(isArabic(input)).toBe(true);
     });
 
